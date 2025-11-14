@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ecodev-sankey"
-version = "0.0.4"
+version = "0.0.5"
 description = "Hierarchy generators"
 authors = ["Dorian Kodelja <dorian.kodelja@gmail.com>",
 "Thomas Epelbaum <tomepel@gmail.com>",

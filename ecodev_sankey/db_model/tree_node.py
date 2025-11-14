@@ -40,6 +40,8 @@ class TreeNode(TreeNodeBase, table=True):  # type: ignore
     children: list['TreeNode'] = Relationship(back_populates='parent',
                                               cascade_delete=True)
     project_id: Optional[int] = Field(default=None, foreign_key='project.id', index=True)
+    project: Optional['Project'] = Relationship(  # type: ignore[name-defined]
+        back_populates='tree_nodes')
     datapoints: list['DataPoint'] = Relationship(  # type: ignore[name-defined]
         back_populates='nodes', link_model=NodeDataPointLink)
 
