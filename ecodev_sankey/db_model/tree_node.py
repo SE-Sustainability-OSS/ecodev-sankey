@@ -8,6 +8,8 @@ from sqlalchemy import Index
 from sqlmodel import Field
 from sqlmodel import Relationship
 
+from ecodev_sankey.db_model.node_datapoint_link import NodeDataPointLink
+
 
 class TreeNodeBase(SQLModelWithVal):
     """
@@ -38,6 +40,8 @@ class TreeNode(TreeNodeBase, table=True):  # type: ignore
     children: list['TreeNode'] = Relationship(back_populates='parent',
                                               cascade_delete=True)
     project_id: Optional[int] = Field(default=None, foreign_key='project.id', index=True)
+    datapoints: list['DataPoint'] = Relationship(  # type: ignore[name-defined]
+        back_populates='nodes', link_model=NodeDataPointLink)
 
     def __repr__(self) -> str:
         return f'TreeNode: {self.name}({self.business_concept}[{self.level}]) {self.id}'

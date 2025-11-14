@@ -32,9 +32,8 @@ def get_sankey_datapoints(project_id: int,
     """
     for datapoint in retrieve_datapoints_with_filters(project_id, filters, session, DataPoint):
         nodes_rep: dict[str, Any] = {}
-        for node_id in session.exec(select(NodeDataPointLink.node_id).where(
-                NodeDataPointLink.datapoint_id == datapoint.id)):
-            nodes_rep |= get_node_rep(node_id, project_id, session)
+        for node in datapoint.nodes:
+            nodes_rep |= get_node_rep(node.id, project_id, session)
         yield {ID: datapoint.id} | field_adders(datapoint, session) | nodes_rep
 
 
