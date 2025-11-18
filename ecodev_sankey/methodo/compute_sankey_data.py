@@ -12,24 +12,29 @@ from ecodev_sankey.constants import LABEL
 from ecodev_sankey.constants import NODE_ID
 from ecodev_sankey.constants import NUM_CHILDREN
 from ecodev_sankey.constants import NUM_DATAPOINTS
+from ecodev_sankey.constants import PROP
 from ecodev_sankey.constants import ROOT
 from ecodev_sankey.constants import VALUE
+
+EPSILON = 1.0e-10
 
 
 def create_graph_from_columns(df: pd.DataFrame,
                               cols: list[str],
                               names: list[str],
-                              colors: list[str]) -> DiGraph:
+                              colors: list[str],
+                              threshold: float = 0.) -> DiGraph:
     """
     Create a graph out of the passed dataframe, given a list of cols
 
     NB: We create a root node to ease the DAG generation
     """
+    df[PROP] = 100. * sum(df[x] for x in names) / (sum(df[x].sum() for x in names) + EPSILON)
     graph = nx.DiGraph()
     graph.add_nodes_from([(0, {COLOR: colors[0], VALUE: 100, LABEL: ROOT})])
     for depth, column in enumerate(cols):
-        _add_nodes_from_column(graph, df, column, depth, names, colors)
-    _add_edges_from_columns(graph, df, cols, names, colors)
+        _add_nodes_from_column(graph, df, column, depth, names, colors, threshold)
+    _add_edges_from_columns(graph, df, cols, names, colors, threshold)
     _add_colors(graph)
     _add_num_children(graph)
     return graph
@@ -48,7 +53,8 @@ def _add_nodes_from_column(graph: DiGraph,
                            raw_df: pd.DataFrame,
                            col: str, depth: int,
                            names: list[str],
-                           colors: list[str]
+                           colors: list[str],
+                           threshold: float
                            ) -> None:
     """
     Add nodes to the passed graph corresponding to column in df.
@@ -60,11 +66,10 @@ def _add_nodes_from_column(graph: DiGraph,
      as we color them in this order (and we would rather prefer to have the nodes with the
      highest value wrt to the quantitative column to color their children than the other way around
     """
-    df = raw_df[[col, col+'_id', *names]].groupby(col).agg(
-        {col+'_id': 'first'} | {x: 'sum' for x in names}
+    df = raw_df[[col, col+'_id', *names, PROP]].groupby(col).agg(
+        {col+'_id': 'first'} | {x: 'sum' for x in names} | {PROP: 'sum'}
     ).reset_index()
-    for jdx, x in df.sort_values(names).iterrows():
-
+    for jdx, x in df[df[PROP] > threshold].sort_values(PROP).iterrows():
         node = _infos(raw_df[raw_df[col] == x[col]], jdx, x,  x[col], x[col+'_id'], names, colors)
         graph.add_nodes_from([(len(graph.nodes), node)])
         if depth == 0:
@@ -77,13 +82,15 @@ def _add_edges_from_columns(graph: DiGraph,
                             df: pd.DataFrame,
                             cols: list[str],
                             names: list,
-                            colors: list[str]) -> None:
+                            colors: list[str],
+                            thresh: float
+                            ) -> None:
     """
     Add all edges (not related to root) to the passed graph.
     """
     nodes = {graph.nodes[node][LABEL]: node for node in graph.nodes}
     for first_col, second_col in zip(cols, cols[1:]):
-        _add_edges_from_column_pairs(graph, df, first_col, second_col, nodes, names, colors)
+        _add_edges_from_column_pairs(graph, df, first_col, second_col, nodes, names, colors, thresh)
 
 
 def _add_edges_from_column_pairs(
@@ -93,7 +100,8 @@ def _add_edges_from_column_pairs(
         s_col: str,
         nodes: dict[str, int],
         names: list[str],
-        colors: list[str]
+        colors: list[str],
+        threshold: float
 ) -> None:
     """
     Add all edges between nodes of f_col and s_col in the flatten df data.
@@ -103,8 +111,9 @@ def _add_edges_from_column_pairs(
     NB2: Beware, huge subtlety number 2: for node who have SEVERAL (not 1, several) children and
     one of them is None, we replace this None with the following node "<node name> - Other".
     """
-    dg = df[[f_col, s_col, *names]].groupby([f_col, s_col], dropna=False)[names].sum().reset_index()
-    for idx, x in dg.sort_values(names, ascending=False).iterrows():
+    dg = df[[f_col, s_col, *names, PROP]].groupby([f_col, s_col], dropna=False)[
+        [*names, PROP]].sum().reset_index()
+    for idx, x in dg[dg[PROP] > threshold].sort_values(PROP, ascending=False).iterrows():
         edge = {COLOR: colors[0], LABEL: f'source: {x[f_col]} target: {x[s_col]}'} | {
             name: x.loc[name] for name in names}
         graph.add_edges_from([(nodes[x[f_col]], nodes[x[s_col]], edge)])
