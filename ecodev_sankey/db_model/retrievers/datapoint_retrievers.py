@@ -12,7 +12,6 @@ from sqlmodel import Session
 from sqlmodel.main import SQLModelMetaclass
 
 from ecodev_sankey.constants import ID
-from ecodev_sankey.db_model.empty_datapoint_list_error import EmptyDatapointList
 from ecodev_sankey.db_model.node_datapoint_link import NodeDataPointLink
 from ecodev_sankey.db_model.retrievers.tree_node_retrievers import get_node_rep
 from ecodev_sankey.db_model.tree_node import TreeNode
@@ -22,7 +21,8 @@ def get_sankey_datapoints(project_id: int,
                           filters: dict[str, list[int]],
                           field_adders: Callable,
                           session: Session,
-                          DataPoint: SQLModelMetaclass
+                          DataPoint: SQLModelMetaclass,
+                          extra_filters: list | None = None
                           ) -> Iterator[dict]:
     """
     Returns a DataFrame to be used for generating the Sankey diagram.
@@ -30,7 +30,8 @@ def get_sankey_datapoints(project_id: int,
     - 1) retrieve the required data from (data_point, geography, entity, category) dbs
     - 2) convert each data to a DataFrame records.
     """
-    for datapoint in retrieve_datapoints_with_filters(project_id, filters, session, DataPoint):
+    for datapoint in retrieve_datapoints_with_filters(project_id, filters, session, DataPoint,
+                                                      extra_filters):
         nodes_rep: dict[str, Any] = {}
         for node in datapoint.nodes:
             nodes_rep |= get_node_rep(node.id, project_id, session)
@@ -40,15 +41,15 @@ def get_sankey_datapoints(project_id: int,
 def retrieve_datapoints_from_hierarchy_node(project_id: int,
                                             base_node_id: int,
                                             session: Session,
-                                            DataPoint: SQLModelMetaclass
+                                            DataPoint: SQLModelMetaclass,
+                                            extra_filters: list | None = None
                                             ) -> list[SQLModelMetaclass]:
     """
     Return all datapoints where one of their node is in the subtree starting with base_node_id
     """
     ancestor_nodes = (
         select(TreeNode.id)
-        .where(
-            (TreeNode.id == base_node_id))
+        .where(TreeNode.id == base_node_id)
         .cte(name='ancestor_nodes', recursive=True)
     )
     ancestor_nodes = ancestor_nodes.union_all(
@@ -61,30 +62,12 @@ def retrieve_datapoints_from_hierarchy_node(project_id: int,
         .join(NodeDataPointLink, DataPoint.id == NodeDataPointLink.datapoint_id)
         .join(TreeNode, NodeDataPointLink.node_id == TreeNode.id)
         .where(TreeNode.id.in_(select(ancestor_nodes.c.id)),  # type: ignore[union-attr]
-               DataPoint.project_id == project_id
+               DataPoint.project_id == project_id,
+               *(extra_filters or [])
                )
         .distinct()
     )
     return session.exec(stmt).all()
-
-
-def retrieve_datapoints_from_multi_tree(project_id: int,
-                                        base_node_ids: list[int],
-                                        session: Session,
-                                        DataPoint: SQLModelMetaclass
-                                        ) -> list[int]:
-    """
-    Given a list of tree node, return the list of datapoint that belong to all trees
-    """
-    eligible_per_node = [set([point.id
-                              for point in retrieve_datapoints_from_hierarchy_node(project_id,
-                                                                                   base_node_id,
-                                                                                   session,
-                                                                                   DataPoint)])
-                         for base_node_id in base_node_ids]
-    if not eligible_per_node:
-        raise EmptyDatapointList('no datapoints for provided list')
-    return list(set.intersection(*eligible_per_node))  # type: ignore[arg-type]
 
 
 def retrieve_datapoint(datapoint_id: int,
@@ -111,7 +94,8 @@ def retrieve_datapoints_with_filters(
     project_id: int,
     hierarchy_filters: dict[str, list[int]],
     session: Session,
-    DataPoint: SQLModelMetaclass
+    DataPoint: SQLModelMetaclass,
+    extra_filters: list | None = None
 ) -> list[SQLModelMetaclass]:
     """
     Given a hierarchy_filters giving a list of allowed node for multiple hierarchies,
@@ -127,7 +111,9 @@ def retrieve_datapoints_with_filters(
     """
 
     if not hierarchy_filters:
-        return session.exec(select(DataPoint).where(DataPoint.project_id == project_id)).all()
+        return session.exec(
+            select(DataPoint).where(DataPoint.project_id == project_id, *(extra_filters or []))
+        ).all()
 
     # Flatten to list of (business_concept, base_id) tuples
     concept_base_pairs = [
@@ -167,6 +153,7 @@ def retrieve_datapoints_with_filters(
         .join(all_nodes_cte, TreeNode.id == all_nodes_cte.c.node_id)
         .where(
             DataPoint.project_id == project_id,
+            *(extra_filters or [])
         )
         .group_by(DataPoint.id)
         .having(

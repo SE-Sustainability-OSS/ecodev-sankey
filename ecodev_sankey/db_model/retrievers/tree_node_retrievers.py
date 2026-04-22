@@ -27,6 +27,7 @@ def get_tree_node(project_id: int,
     """
     Retrieve a tree node given its name
     """
+
     try:
 
         return session.exec(select(TreeNode).where(
@@ -39,9 +40,11 @@ def get_tree_node(project_id: int,
         if isinstance(e, exc.NoResultFound):
             error = f'{name} was not found in hierarchy {business_concept} for project ' +\
                     f'{project_id} at level {level}'
-        else:
+        elif isinstance(e, exc.MultipleResultsFound):
             error = f'{type(e).__name__} {name} appears multiple times in hierarchy '\
                 f'{business_concept} for project {project_id} at level {level}'
+        else:
+            error = f'{type(e).__name__} {e}'
         log.warning(error)
 
         raise ValueError(error)
