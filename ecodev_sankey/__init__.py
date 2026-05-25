@@ -8,6 +8,7 @@ from ecodev_sankey.db_model.empty_datapoint_list_error import EmptyDatapointList
 from ecodev_sankey.db_model.retrievers.datapoint_retrievers import get_sankey_datapoints
 from ecodev_sankey.db_model.retrievers.datapoint_retrievers import retrieve_datapoints
 from ecodev_sankey.db_model.retrievers.datapoint_retrievers import retrieve_datapoints_with_filters
+from ecodev_sankey.db_model.retrievers.datapoint_retrievers import retrieve_ghg_aggregate_with_filters
 from ecodev_sankey.db_model.retrievers.tree_node_retrievers import get_business_axis
 from ecodev_sankey.db_model.retrievers.tree_node_retrievers import get_flat_hierarchy
 from ecodev_sankey.db_model.retrievers.tree_node_retrievers import get_node_by_id
@@ -36,6 +37,7 @@ __all__ = ['DataPointBase',
            'get_filter_dict',
            'EmptyDatapointList',
            'retrieve_datapoints',
+           'retrieve_ghg_aggregate_with_filters',
            'get_row_tree_nodes',
            'get_hierarchies',
            'create_tree_hierarchies',

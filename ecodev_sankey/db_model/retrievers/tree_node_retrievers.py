@@ -1,7 +1,6 @@
 """
 Module implementing all tree node retriever methods
 """
-from functools import lru_cache
 from typing import Iterable
 from typing import Optional
 
@@ -16,8 +15,11 @@ from ecodev_sankey.db_model.tree_node import TreeNode
 
 log = logger_get(__name__)
 
+_tree_struct_cache: dict[tuple, list[str]] = {}
+_tree_node_id_cache: dict[tuple, int] = {}
+_node_rep_cache: dict[tuple, dict] = {}
 
-@lru_cache
+
 def get_tree_node(project_id: int,
                   business_concept: str,
                   level: int,
@@ -26,6 +28,23 @@ def get_tree_node(project_id: int,
                   ) -> TreeNode:
     """
     Retrieve a tree node given its name
+    """
+
+    key = (project_id, business_concept, level, name)
+    if key not in _tree_node_id_cache:
+        node = _get_tree_node(project_id, business_concept, level, name, session)
+        _tree_node_id_cache[key] = node.id
+    return session.get(TreeNode, _tree_node_id_cache[key])
+
+
+def _get_tree_node(project_id: int,
+                   business_concept: str,
+                   level: int,
+                   name: str,
+                   session: Session
+                   ) -> TreeNode:
+    """
+    Atomic tree node retrieval function
     """
 
     try:
@@ -116,7 +135,6 @@ def get_business_axis(project_id: int, session: Session):
                         (TreeNode.project_id == project_id).distinct()).all()
 
 
-@lru_cache(maxsize=None)
 def get_node_rep(node_id: int, project_id: int, session: Session) -> dict[str, str | None]:
     """
     Given a node_id, return a dict mapping each level of the tree to its name.
@@ -127,16 +145,17 @@ def get_node_rep(node_id: int, project_id: int, session: Session) -> dict[str, s
     NA         Canada
     Europe     France
 
+    it will return {'Continent': 'NA', 'Country': 'USA'} when provided with the node for USA
+    and {'Continent': 'NA', 'Country': None} when provided with the node for NA
 
-    it will return {'continent': 'NA', 'Country': 'USA'} when provided with the node for USA
-    and {'continent': 'NA', 'Country': None} when provided with the node for NA
-
-    As this is called repeatedly to construct sankey data, we use cache which impose passing
-    hashable arguments, thus calling it with node.id then reselecting node from id
+    Results are cached by (node_id, project_id) since the return value is session-independent
+    which means lru_cache would not work.
     """
+    key = (node_id, project_id)
+    if key in _node_rep_cache:
+        return _node_rep_cache[key]
 
     node = session.exec(select(TreeNode).where(TreeNode.id == node_id)).one()
-
     business_concept = node.business_concept
     if node.parent:
         parent_rep = get_node_rep(node.parent.id, project_id, session)
@@ -147,10 +166,11 @@ def get_node_rep(node_id: int, project_id: int, session: Session) -> dict[str, s
             parent_rep[k+'_id'] = None
     parent_rep[node.level_name] = node.name
     parent_rep[node.level_name+'_id'] = node.id
-    return parent_rep.copy()
+    result = parent_rep.copy()
+    _node_rep_cache[key] = result
+    return result
 
 
-@lru_cache
 def get_tree_struct(business_concept: str,
                     project_id: int,
                     session: Session,
@@ -160,13 +180,15 @@ def get_tree_struct(business_concept: str,
     'Geography'=> ['Continent', 'Country']
     'LOB'=>['LOB1', 'LOB2', 'LOB3']
     """
-
-    levels = session.exec(select(TreeNode.level,
-                                 TreeNode.level_name).distinct().where(
-        TreeNode.business_concept == business_concept,
-        TreeNode.project_id == project_id
-    ).order_by(TreeNode.level)).all()
-    return list(zip(*levels))[1]  # type: ignore[return-value]
+    key = (business_concept, project_id)
+    if key not in _tree_struct_cache:
+        levels = session.exec(select(TreeNode.level,
+                                     TreeNode.level_name).distinct().where(
+            TreeNode.business_concept == business_concept,
+            TreeNode.project_id == project_id
+        ).order_by(TreeNode.level)).all()
+        _tree_struct_cache[key] = list(zip(*levels))[1]
+    return _tree_struct_cache[key]
 
 
 def get_tree_node_id(project_id: int,
