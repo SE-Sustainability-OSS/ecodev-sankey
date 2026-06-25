@@ -89,7 +89,10 @@ def get_row_tree_nodes(project_id: int,
             if not vals:
                 continue
             name = '_'.join(vals)
-            yield get_tree_node(project_id, hierarchy, len(vals)-1, name, session)
+            if not (node := get_tree_node(project_id, hierarchy, len(vals)-1, name, session)):
+                log.warning('Failed to fetch tree node')
+            else:
+                yield node
         except Exception as e:
             log.critical(f'{type(e).__name__} {e}')
             raise e
