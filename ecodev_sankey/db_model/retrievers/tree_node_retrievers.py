@@ -89,7 +89,8 @@ def get_row_tree_nodes(project_id: int,
             if not vals:
                 continue
             name = '_'.join(vals)
-            yield get_tree_node(project_id, hierarchy, len(vals)-1, name, session)
+            if (node := get_tree_node(project_id, hierarchy, len(vals)-1, name, session)):
+                yield node
         except Exception as e:
             log.critical(f'{type(e).__name__} {e}')
             raise e
